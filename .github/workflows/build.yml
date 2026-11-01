@@ -1,14 +1,12 @@
-
 name: Sync Upstream and Build Docker
 
 on:
   schedule:
     - cron: "*/15 * * * *"
-
   workflow_dispatch:
     inputs:
       force:
-        description: "Force build Docker image"
+        description: "Force build Docker image even when upstream has no changes"
         required: false
         type: boolean
         default: false
@@ -18,13 +16,12 @@ permissions:
   packages: write
 
 concurrency:
-  group: yesplaymusic-build
+  group: yesplaymusic-sync-build
   cancel-in-progress: false
 
 jobs:
   sync-and-build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -32,42 +29,72 @@ jobs:
           ref: master
           fetch-depth: 0
 
-      - name: Sync official source
+      - name: Sync upstream source
         id: sync
         env:
-          FORCE_BUILD: ${{ inputs.force }}
+          FORCE_BUILD: ${{ inputs.force || 'false' }}
+        shell: bash
         run: |
           set -euo pipefail
 
           git remote add upstream https://github.com/qier222/YesPlayMusic.git
           git fetch upstream master
 
+          changed=false
           if git merge-base --is-ancestor upstream/master HEAD; then
             echo "No upstream changes."
-            echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
+            # Do not force upstream's version over fork-specific workflow files.
             git merge --no-edit upstream/master
-
             git push origin HEAD:master
-
-            echo "Upstream synchronized."
-            echo "changed=true" >> "$GITHUB_OUTPUT"
+            changed=true
+            echo "Upstream changes synchronized."
           fi
 
-          if [ "$FORCE_BUILD" = "true" ]; then
-            echo "Manual force build requested."
-            echo "changed=true" >> "$GITHUB_OUTPUT"
+          if [ "$changed" = "true" ] || [ "$FORCE_BUILD" = "true" ]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Temporarily fix upstream API install command
+        if: steps.sync.outputs.should_build == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path("Dockerfile")
+          dockerfile = path.read_text()
+          pattern = re.compile(
+              r'(?m)^([ \\t]*&&[ \\t]*npm[ \\t]+i[ \\t]+-g[ \\t]+)'
+              r'\\$\\(awk[^\\n]*?/usr/local/lib/package\\.json\\)[ \\t]*\\\\[ \\t]*$'
+          )
+          replacement = (
+              '  && API_VERSION="$(node -p "require(\'/usr/local/lib/package.json\').dependencies[\'@neteaseapireborn/api\']")" \\\\n'
+              '  && npm i -g "@neteaseapireborn/api@$API_VERSION" \\\\'
+          )
+
+          patched, count = pattern.subn(replacement, dockerfile, count=1)
+          if count == 1:
+              path.write_text(patched)
+              print("Applied temporary CI-only fix to the API install command.")
+          elif re.search(r'npm i -g ["\\\']?@neteaseapireborn/api@', dockerfile):
+              print("API install command already appears fixed; no patch needed.")
+          else:
+              raise SystemExit("Unrecognized API install command in Dockerfile; refusing to build.")
+          PY
 
       - name: Set up Docker Buildx
-        if: steps.sync.outputs.changed == 'true'
+        if: steps.sync.outputs.should_build == 'true'
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to GHCR
-        if: steps.sync.outputs.changed == 'true'
+      - name: Log in to GHCR
+        if: steps.sync.outputs.should_build == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -75,7 +102,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate image metadata
-        if: steps.sync.outputs.changed == 'true'
+        if: steps.sync.outputs.should_build == 'true'
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -85,7 +112,7 @@ jobs:
             type=sha,format=long
 
       - name: Build and publish Docker image
-        if: steps.sync.outputs.changed == 'true'
+        if: steps.sync.outputs.should_build == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
