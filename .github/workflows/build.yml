@@ -71,12 +71,12 @@ jobs:
           path = Path("Dockerfile")
           dockerfile = path.read_text()
           pattern = re.compile(
-              r'(?m)^([ \\t]*&&[ \\t]*npm i -g )\\$\\(awk[^\\n]*?/usr/local/lib/package\\.json\\)[ \\t]*\\\\[ \\t]*$'
+              r'(?m)^([ \t]*&&[ \t]*npm i -g )\$\(awk[^\n]*?/usr/local/lib/package\.json\)[ \t]*\\[ \t]*$'
           )
           slash = chr(92)
           replacement = (
-              '  && API_VERSION="$(node -p "require(\\'/usr/local/lib/package.json\\').dependencies[\\'@neteaseapireborn/api\\']")" '
-              + slash + "\\n"
+              "  && API_VERSION=$(node -p \"require('/usr/local/lib/package.json').dependencies['@neteaseapireborn/api']\") "
+              + slash + "\n"
               + '  && npm i -g "@neteaseapireborn/api@$API_VERSION" ' + slash
           )
 
