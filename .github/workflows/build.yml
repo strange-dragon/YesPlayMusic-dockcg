@@ -1,6 +1,12 @@
 name: Sync Upstream and Build Docker
 
 on:
+  push:
+    branches:
+      - master
+    paths:
+      - Dockerfile
+      - .github/workflows/build.yml
   schedule:
     - cron: "*/15 * * * *"
   workflow_dispatch:
@@ -32,7 +38,7 @@ jobs:
       - name: Sync upstream source
         id: sync
         env:
-          FORCE_BUILD: ${{ inputs.force || 'false' }}
+          FORCE_BUILD: \${{ inputs.force || github.event_name == 'push' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -99,15 +105,15 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: \${{ github.actor }}
+          password: \${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate image metadata
         if: steps.sync.outputs.should_build == 'true'
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/yesplaymusic
+          images: ghcr.io/\${{ github.repository_owner }}/yesplaymusic
           tags: |
             type=raw,value=latest
             type=sha,format=long
@@ -120,7 +126,7 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: \${{ steps.meta.outputs.tags }}
+          labels: \${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
