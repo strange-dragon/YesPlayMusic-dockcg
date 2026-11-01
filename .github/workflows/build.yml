@@ -71,19 +71,20 @@ jobs:
           path = Path("Dockerfile")
           dockerfile = path.read_text()
           pattern = re.compile(
-              r'(?m)^([ \\t]*&&[ \\t]*npm[ \\t]+i[ \\t]+-g[ \\t]+)'
-              r'\\$\\(awk[^\\n]*?/usr/local/lib/package\\.json\\)[ \\t]*\\\\[ \\t]*$'
+              r'(?m)^([ \\t]*&&[ \\t]*npm i -g )\\$\\(awk[^\\n]*?/usr/local/lib/package\\.json\\)[ \\t]*\\\\[ \\t]*$'
           )
+          slash = chr(92)
           replacement = (
-              '  && API_VERSION="$(node -p "require(\'/usr/local/lib/package.json\').dependencies[\'@neteaseapireborn/api\']")" \\\\n'
-              '  && npm i -g "@neteaseapireborn/api@$API_VERSION" \\\\'
+              '  && API_VERSION="$(node -p "require(\\'/usr/local/lib/package.json\\').dependencies[\\'@neteaseapireborn/api\\']")" '
+              + slash + "\\n"
+              + '  && npm i -g "@neteaseapireborn/api@$API_VERSION" ' + slash
           )
 
           patched, count = pattern.subn(replacement, dockerfile, count=1)
           if count == 1:
               path.write_text(patched)
               print("Applied temporary CI-only fix to the API install command.")
-          elif re.search(r'npm i -g ["\\\']?@neteaseapireborn/api@', dockerfile):
+          elif "@neteaseapireborn/api@" in dockerfile and "awk -F" not in dockerfile:
               print("API install command already appears fixed; no patch needed.")
           else:
               raise SystemExit("Unrecognized API install command in Dockerfile; refusing to build.")
