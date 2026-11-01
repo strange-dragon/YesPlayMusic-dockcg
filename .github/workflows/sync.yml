@@ -5,10 +5,11 @@ permissions:
   issues: write
   actions: write
 
+# Original upstream sync workflow retained for reference, intentionally disabled.
 on:
-  schedule:
-    - cron: '0 * * * *' # every hour
-  workflow_dispatch:
+  push:
+    branches:
+      - __upstream_sync_disabled__
 
 jobs:
   sync_latest_from_upstream:
