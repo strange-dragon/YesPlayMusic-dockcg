@@ -71,7 +71,7 @@ jobs:
           path = Path("Dockerfile")
           dockerfile = path.read_text()
           pattern = re.compile(
-              r'(?m)^([ \t]*&&[ \t]*npm i -g )\$\(awk[^\n]*?/usr/local/lib/package\.json\)[ \t]*\\[ \t]*$'
+              r'(?m)^([ \t]*&&[ \t]*npm i -g )\$\(\s*awk[^\n]*?/usr/local/lib/package\.json\)[ \t]*\\[ \t]*$'
           )
           slash = chr(92)
           replacement = (
@@ -80,7 +80,7 @@ jobs:
               + '  && npm i -g "@neteaseapireborn/api@$API_VERSION" ' + slash
           )
 
-          patched, count = pattern.subn(replacement, dockerfile, count=1)
+          patched, count = pattern.subn(lambda _: replacement, dockerfile, count=1)
           if count == 1:
               path.write_text(patched)
               print("Applied temporary CI-only fix to the API install command.")
